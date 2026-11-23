@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>永續報告書批次下載</title>
+  <style>
+    body {
+      margin: 0;
+      background: #eff5f3;
+      color: #14352e;
+      font: 1rem/1.6 system-ui, "Microsoft JhengHei", sans-serif;
+    }
+
+    main {
+      max-width: 44rem;
+      margin: 3rem auto;
+      padding: 0 1rem;
+    }
+
+    section {
+      padding: 1.5rem;
+      border: 1px solid #c8d8d2;
+      border-radius: 1rem;
+      background: white;
+    }
+
+    select,
+    input[type="search"] {
+      box-sizing: border-box;
+      display: block;
+      width: 100%;
+      padding: .6rem;
+      border: 1px solid #8ba39b;
+      border-radius: .4rem;
+      font: inherit;
+    }
+
+    details {
+      margin-top: 1rem;
+    }
+
+    summary {
+      padding: .6rem;
+      border: 1px solid #8ba39b;
+      border-radius: .4rem;
+      cursor: pointer;
+    }
+
+    details[open] summary {
+      margin-bottom: .75rem;
+    }
+
+    #company-options {
+      max-height: 14rem;
+      overflow-y: auto;
+      margin-top: .5rem;
+    }
+
+    .company-option {
+      display: block;
+      padding: .4rem;
+      cursor: pointer;
+    }
+
+    .company-option:hover {
+      background: #eff5f3;
+    }
+
+    .company-option input {
+      margin-right: .5rem;
+      accent-color: #146351;
+    }
+
+    .note {
+      color: #435e57;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>永續報告書批次下載</h1>
+
+    <section aria-label="報告下載條件">
+      <label for="report-year">報告年度</label>
+      <select id="report-year" name="year"></select>
+
+      <details>
+        <summary id="company-summary">選擇公司</summary>
+
+        <label for="company-search">搜尋公司</label>
+        <input
+          id="company-search"
+          type="search"
+          placeholder="輸入證券代碼或公司名稱"
+        >
+
+        <div id="company-options" role="group" aria-label="公司選項"></div>
+        <p id="no-matches" hidden>沒有符合的公司。</p>
+      </details>
+
+      <p id="selection-count" aria-live="polite">已選 0 家公司</p>
+      <ul id="selected-companies" aria-label="已選公司"></ul>
+
+      <p class="note">
+        公司選項取自 Excel 的四筆填寫範例。PDF 與 ZIP 下載功能待串接。
+      </p>
+    </section>
+  </main>
+
+  <script>
+    // 將正式 Excel 清單的證券代碼與公司名稱填入這個陣列。
+    const companies = [
+      { code: "1101", name: "台泥" },
+      { code: "1103", name: "嘉泥" },
+      { code: "2330", name: "台積電" },
+      { code: "2454", name: "聯發科" }
+    ];
+
+    const reportYear = document.querySelector("#report-year");
+    const companySearch = document.querySelector("#company-search");
+    const companyOptions = document.querySelector("#company-options");
+    const companySummary = document.querySelector("#company-summary");
+    const selectionCount = document.querySelector("#selection-count");
+    const selectedCompanies = document.querySelector("#selected-companies");
+    const noMatches = document.querySelector("#no-matches");
+
+    // 依新到舊加入年度，預設選中第一個年度 2025。
+    for (let year = 2025; year >= 2015; year--) {
+      reportYear.add(new Option(String(year), String(year)));
+    }
+
+    const options = companies.map(({ code, name }) => {
+      const title = `${code} ${name}`;
+      const label = document.createElement("label");
+      const checkbox = document.createElement("input");
+
+      label.className = "company-option";
+      checkbox.type = "checkbox";
+      checkbox.name = "company_codes";
+      checkbox.value = code;
+
+      label.append(checkbox, title);
+      companyOptions.append(label);
+
+      return { title, label, checkbox };
+    });
+
+    function updateSelection() {
+      const checked = options.filter(({ checkbox }) => checkbox.checked);
+
+      selectionCount.textContent = `已選 ${checked.length} 家公司`;
+      companySummary.textContent = checked.length
+        ? `選擇公司（${checked.length}）`
+        : "選擇公司";
+
+      const items = checked.map(({ title }) => {
+        const item = document.createElement("li");
+        item.textContent = title;
+        return item;
+      });
+
+      selectedCompanies.replaceChildren(...items);
+    }
+
+    function filterCompanies() {
+      const query = companySearch.value.trim().toLowerCase();
+
+      for (const { title, label } of options) {
+        // 搜尋只切換選項的顯示狀態，因此會保留已勾選的公司。
+        label.hidden = !title.toLowerCase().includes(query);
+        label.style.display = label.hidden ? "none" : "";
+      }
+
+      noMatches.hidden = options.some(({ label }) => !label.hidden);
+    }
+
+    companyOptions.addEventListener("change", updateSelection);
+    companySearch.addEventListener("input", filterCompanies);
+  </script>
+</body>
+</html>
