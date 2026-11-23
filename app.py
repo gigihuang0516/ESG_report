@@ -14,7 +14,7 @@ if upload is not None:
         data = upload.getvalue()
         companies = load_companies(data)
         st.success(f'成功讀取 {len(companies)} 家公司')
-        st.dataframe(pd.DataFrame(companies).rename(columns={'code': '證券代碼', 'name': '公司名稱'}), hide_index=True, use_container_width=True)
+        st.dataframe(pd.DataFrame(companies).rename(columns={'code': '證券代碼', 'name': '公司名稱'}), hide_index=True, width="stretch")
         if len(companies) > 5:
             st.warning('第一版一次最多處理 5 家公司，請縮減 Excel 清單。')
         else:
@@ -41,7 +41,7 @@ if upload is not None:
                         zip_data, logs, success = make_zip(companies, rows, query_logs, year, progress=on_download)
                     bar.progress(1.0)
                     st.write(f'成功下載 **{success}** 份／共 **{len(rows)}** 份')
-                    st.dataframe(pd.DataFrame(logs), hide_index=True, use_container_width=True)
+                    st.dataframe(pd.DataFrame(logs), hide_index=True, width="stretch")
                     st.session_state['result_zip'] = zip_data
                     st.session_state['result_year'] = year
                     if success == 0:
