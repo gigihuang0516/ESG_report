@@ -141,7 +141,7 @@ def make_zip(companies, rows, query_logs, year, progress=None, delay=1):
                 status, content_type, size, result_text, filepath = '', '', 0, '', ''
                 try:
                     # stream=True avoids buffering a full response before validating size.
-                    with session.get(FILE_URL, params={'id': download_id}, timeout=120, stream=True) as response:
+                    with session.get(FILE_URL, params={'id': download_id}, timeout=(10, 30), stream=True) as response:
                         status = response.status_code
                         content_type = response.headers.get('Content-Type', '')
                         response.raise_for_status()
