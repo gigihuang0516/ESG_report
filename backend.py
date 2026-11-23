@@ -71,7 +71,7 @@ def query_reports(companies, year, progress=None, delay=0.5):
             payload = {'marketType': 0, 'year': int(year), 'industryNameList': [], 'companyCodeList': [code], 'industryName': 'all', 'companyCode': code}
             status, count, returned, message, ok, state = '', '', 0, '', False, ''
             try:
-                response = session.post(API_URL, json=payload, timeout=120)
+                response = session.post(API_URL, json=payload, timeout=(10, 30))
                 status = response.status_code
                 response.raise_for_status()
                 result = response.json()
