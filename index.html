@@ -4,35 +4,37 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>永續報告書批次下載</title>
+  <title>上市公司永續報告書下載</title>
   <style>
     * { box-sizing: border-box; }
     body {
       margin: 0;
       background: #eff5f3;
       color: #14352e;
-      font: 1rem/1.6 system-ui, "Microsoft JhengHei", sans-serif;
+      font: 1rem/1.65 system-ui, "Microsoft JhengHei", sans-serif;
     }
     main { max-width: 44rem; margin: 3rem auto; padding: 0 1rem; }
+    h1 { font-size: clamp(1.6rem, 5vw, 2.4rem); line-height: 1.25; }
     form {
-      padding: 1.5rem;
+      padding: clamp(1rem, 4vw, 2rem);
+      background: white;
       border: 1px solid #c8d8d2;
       border-radius: 1rem;
-      background: white;
     }
     label { display: block; margin: 1rem 0 .3rem; font-weight: 650; }
     label:first-child { margin-top: 0; }
-    select, textarea {
-      display: block;
+    .company-fields label { margin-top: 1rem; }
+    select, textarea, input[type="file"] {
       width: 100%;
       padding: .65rem;
       border: 1px solid #8ba39b;
       border-radius: .4rem;
-      color: inherit;
       background: white;
+      color: inherit;
       font: inherit;
     }
     textarea { resize: vertical; }
+    .note { margin: .55rem 0 1rem; color: #435e57; }
     button, .download {
       display: inline-block;
       padding: .65rem 1rem;
@@ -47,152 +49,206 @@
     }
     button:disabled { opacity: .55; cursor: default; }
     :focus-visible { outline: 3px solid #16735d; outline-offset: 3px; }
-    .note { color: #435e57; }
+    #status:empty { display: none; }
     [hidden] { display: none !important; }
   </style>
 </head>
 <body>
   <main>
-    <h1>永續報告書批次下載</h1>
-    <p>選擇年份、輸入上市公司代碼，一次下載多家公司的中文永續報告書。</p>
+    <h1>上市公司永續報告書下載</h1>
+    <p>選擇報告年度，再輸入公司代碼或上傳 Excel。成功取得的中文報告會打包成一個 ZIP。</p>
 
     <form id="report-form">
       <label for="year">報告年度</label>
-      <select id="year" name="year" required></select>
+      <select id="year" required></select>
 
-      <label for="company-codes">上市公司代碼</label>
-      <textarea id="company-codes" name="company_codes" rows="4"
-        maxlength="1000" placeholder="例如 2330、2454、1101"
-        aria-describedby="code-help" required></textarea>
-      <p class="note" id="code-help">
-        可用逗號、空格或換行分隔。每次最多 50 家，重複代碼只處理一次。
-      </p>
+      <label for="input-mode">公司清單來源</label>
+      <select id="input-mode">
+        <option value="manual">手動輸入公司代碼</option>
+        <option value="excel">上傳 Excel 公司清單</option>
+      </select>
 
+      <div id="manual-fields" class="company-fields">
+        <label for="company-codes">上市公司代碼</label>
+        <textarea id="company-codes" rows="4" maxlength="1000"
+          placeholder="例如 2330、2454、1101" aria-describedby="code-help" required></textarea>
+        <p class="note" id="code-help">多個代碼可用逗號、空格或換行分隔。</p>
+      </div>
+
+      <div id="excel-fields" class="company-fields" hidden>
+        <label for="company-file">Excel 公司清單</label>
+        <input id="company-file" type="file" accept=".xlsx"
+          aria-describedby="excel-help" disabled>
+        <p class="note" id="excel-help">
+          請上傳 2 MB 以內的 .xlsx 檔案。工作表名稱為「公司清單」，
+          第一列須包含「證券代碼」和「公司名稱」。
+        </p>
+      </div>
+
+      <p class="note">每次最多處理 50 家公司，重複代碼只處理一次。</p>
       <button id="start-download" type="submit">批次下載</button>
-      <p id="status" role="status"></p>
+
+      <p id="status" role="status" aria-live="polite"></p>
       <ul id="results" aria-label="各公司處理結果" hidden></ul>
       <a id="zip-link" class="download" hidden>下載 ZIP</a>
     </form>
   </main>
 
   <script>
-    // 在 GitHub Pages 使用時，填入已部署的 Python 後端 HTTPS 網址。
-    // 使用 app.py 在本機開啟網頁時，可保留空字串。
+    // 本機執行 app.py 時留空。GitHub Pages 請填入已部署的 Python 後端 HTTPS 網址。
     const backendUrl = "";
 
     const form = document.querySelector("#report-form");
     const yearSelect = document.querySelector("#year");
+    const mode = document.querySelector("#input-mode");
+    const manualFields = document.querySelector("#manual-fields");
+    const excelFields = document.querySelector("#excel-fields");
     const companyInput = document.querySelector("#company-codes");
-    const submitButton = document.querySelector("#start-download");
+    const companyFile = document.querySelector("#company-file");
+    const button = document.querySelector("#start-download");
     const status = document.querySelector("#status");
     const results = document.querySelector("#results");
     const zipLink = document.querySelector("#zip-link");
+    const controls = [yearSelect, mode, companyInput, companyFile, button];
 
-    const resultLabels = {
+    const labels = {
       downloaded: "下載成功",
       not_found: "查無中文報告",
       query_failed: "查詢失敗",
-      download_failed: "下載失敗",
+      download_failed: "下載失敗"
     };
 
     let zipUrl;
 
     for (let year = 2025; year >= 2015; year--) {
-      yearSelect.add(new Option(String(year), String(year)));
+      yearSelect.add(new Option(`${year} 年`, String(year)));
+    }
+
+    function updateMode() {
+      const useExcel = mode.value === "excel";
+      manualFields.hidden = useExcel;
+      companyInput.disabled = useExcel;
+      companyInput.required = !useExcel;
+      excelFields.hidden = !useExcel;
+      companyFile.disabled = !useExcel;
+      companyFile.required = useExcel;
     }
 
     function clearResults() {
+      status.textContent = "";
       results.replaceChildren();
       results.hidden = true;
       zipLink.hidden = true;
       zipLink.removeAttribute("href");
-
-      if (zipUrl) {
-        URL.revokeObjectURL(zipUrl);
-        zipUrl = undefined;
-      }
+      if (zipUrl) URL.revokeObjectURL(zipUrl);
+      zipUrl = undefined;
     }
+
+    function readExcel(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(",", 2)[1]);
+        reader.onerror = () => reject(new Error("無法讀取 Excel 檔案。"));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    mode.addEventListener("change", () => {
+      updateMode();
+      clearResults();
+    });
+    yearSelect.addEventListener("change", clearResults);
+    companyInput.addEventListener("input", clearResults);
+    companyFile.addEventListener("change", clearResults);
+    updateMode();
 
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
-      if (submitButton.disabled) return;
-
+      if (button.disabled) return;
       clearResults();
-
-      const codes = [...new Set(
-        companyInput.value.normalize("NFKC").split(/[\s,、;]+/u).filter(Boolean)
-      )];
-
-      if (!codes.length || codes.length > 50 || codes.some(code => !/^[0-9]{4}$/.test(code))) {
-        status.textContent = "請輸入 1～50 個四位數上市公司代碼，例如 2330、2454。";
-        return;
-      }
 
       if (location.protocol === "file:") {
         status.textContent = "請執行 python app.py，再開啟 http://127.0.0.1:8000。";
         return;
       }
-
       if (location.hostname.endsWith(".github.io") && !backendUrl) {
-        status.textContent = "此頁尚未設定 Python 下載服務。";
+        status.textContent = "網站尚未設定 Python 下載服務。";
         return;
       }
 
       const year = Number(yearSelect.value);
-      const endpoint = `${backendUrl.replace(/\/+$/, "")}/api/download`;
-      submitButton.disabled = true;
-      status.textContent = `正在處理 ${year} 年度的 ${codes.length} 家公司，請稍候。`;
+      const useExcel = mode.value === "excel";
+      const file = companyFile.files[0];
+      const codes = useExcel ? [] : [...new Set(
+        companyInput.value.normalize("NFKC").split(/[\s,、;]+/u).filter(Boolean)
+      )];
+
+      if (useExcel && (!file || !/\.xlsx$/i.test(file.name) ||
+          file.size === 0 || file.size > 2 * 1024 * 1024)) {
+        status.textContent = "請上傳 2 MB 以內的 .xlsx 公司清單。";
+        return;
+      }
+      if (!useExcel && (codes.length < 1 || codes.length > 50 ||
+          codes.some(code => !/^[0-9]{4}$/.test(code)))) {
+        status.textContent = "請輸入 1～50 個四位數上市公司代碼，例如 2330、2454。";
+        return;
+      }
+
+      for (const control of controls) control.disabled = true;
+      form.setAttribute("aria-busy", "true");
+      status.textContent = `正在查詢 ${year} 年度的報告書，請稍候。`;
 
       try {
+        const payload = useExcel
+          ? { year, company_file: await readExcel(file) }
+          : { year, company_codes: codes };
+        const endpoint = `${backendUrl.replace(/\/+$/, "")}/api/download`;
         const response = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ year, company_codes: codes }),
+          body: JSON.stringify(payload)
         });
 
-        const contentType = response.headers.get("Content-Type") || "";
+        const type = response.headers.get("Content-Type") || "";
         if (!response.ok) {
-          const error = contentType.includes("application/json")
-            ? (await response.json()).error
-            : "下載服務暫時無法處理請求。";
-          throw new Error(error);
+          const error = type.includes("application/json") ? (await response.json()).error : null;
+          throw new Error(error || "下載服務暫時無法處理請求。");
         }
 
-        let companyResults;
-        if (contentType.includes("application/zip")) {
-          const summary = response.headers.get("X-ESG-Results");
-          if (!summary) throw new Error("下載服務未提供公司處理結果。");
-
-          companyResults = JSON.parse(summary);
+        let summary;
+        if (type.includes("application/zip")) {
+          const header = response.headers.get("X-ESG-Results");
+          if (!header) throw new Error("下載服務未提供公司處理結果。");
+          summary = JSON.parse(header);
           zipUrl = URL.createObjectURL(await response.blob());
           zipLink.href = zipUrl;
           zipLink.download = `ESG_${year}.zip`;
           zipLink.hidden = false;
-        } else if (contentType.includes("application/json")) {
-          companyResults = (await response.json()).results;
+        } else if (type.includes("application/json")) {
+          summary = (await response.json()).results;
         } else {
           throw new Error("下載服務回傳了無法辨識的內容。");
         }
 
-        let successCount = 0;
-        for (const code of codes) {
-          const result = companyResults[code];
-          if (result === "downloaded") successCount++;
-
+        let successes = 0;
+        for (const { code, name, status: result } of summary) {
+          if (result === "downloaded") successes++;
           const item = document.createElement("li");
-          item.textContent = `${code}｜${resultLabels[result] || "處理失敗"}`;
+          const company = name ? `${code} ${name}` : code;
+          item.textContent = `${company}｜${labels[result] || "處理失敗"}`;
           results.append(item);
         }
-
         results.hidden = false;
-        status.textContent = `${year} 年度處理完成，成功取得 ${successCount} / ${codes.length} 份報告。`;
+        status.textContent = `${year} 年度處理完成，成功取得 ${successes} / ${summary.length} 份報告。`;
       } catch (error) {
         clearResults();
         status.textContent = error instanceof TypeError
-          ? "無法連線到下載服務，請確認服務已啟動後再試。"
+          ? "無法連線到下載服務，請稍後重試。"
           : error.message;
       } finally {
-        submitButton.disabled = false;
+        form.removeAttribute("aria-busy");
+        for (const control of controls) control.disabled = false;
+        updateMode();
       }
     });
   </script>
