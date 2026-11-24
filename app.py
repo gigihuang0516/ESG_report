@@ -6,7 +6,7 @@ import streamlit as st
 from backend import load_companies, query_reports, make_zip
 
 st.set_page_config(page_title='ESG 永續報告書下載系統',page_icon='📄')
-st.title('📄 ESG 永續報告書下載系統')
+st.title('ESG 永續報告書下載系統')
 st.caption('資料來源：臺灣證券交易所 ESG 平台｜模組化測試版')
 st.info('每次最多 5 家；單份 PDF 60 MB 上限於接收後檢查。請勿上傳敏感資料。')
 year = st.number_input('報告年度',2015,2026,2025,1)
