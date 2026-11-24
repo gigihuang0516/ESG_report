@@ -70,11 +70,17 @@ def query_reports(companies, year, progress=None, delay=0.5):
             code, name = company['code'], company['name']
             payload = {'marketType': 0, 'year': int(year), 'industryNameList': [], 'companyCodeList': [code], 'industryName': 'all', 'companyCode': code}
             status, count, returned, message, ok, state = '', '', 0, '', False, ''
-            try:
-                response = session.post(API_URL, json=payload, timeout=(10, 30))
-                status = response.status_code
-                response.raise_for_status()
-                result = response.json()
+    try:
+        if progress:
+           progress(
+                     index - 1,
+                     len(companies),
+                     f'正在連線 TWSE API：{code} {name}'
+            )
+            response = session.post(API_URL, json=payload, timeout=(10, 30))
+            status = response.status_code
+            response.raise_for_status()
+            result = response.json()
                 if not isinstance(result, dict):
                     raise ValueError('API 回傳格式錯誤。')
                 ok = result.get('success') is True
@@ -140,7 +146,12 @@ def make_zip(companies, rows, query_logs, year, progress=None, delay=1):
                 filename = safe_filename(f'{code}_{name}_{report_year}.pdf')
                 status, content_type, size, result_text, filepath = '', '', 0, '', ''
                 try:
-                    # stream=True avoids buffering a full response before validating size.
+                    if progress:
+                       progress(
+                           index - 1,
+                           len(rows),
+                           f'正在下載 PDF：{code} {name}'
+                        )
                     with session.get(FILE_URL, params={'id': download_id}, timeout=(10, 30), stream=True) as response:
                         status = response.status_code
                         content_type = response.headers.get('Content-Type', '')
